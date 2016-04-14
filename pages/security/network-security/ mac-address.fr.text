@@ -1,0 +1,102 @@
+@title = "Changer votre adresse MAC"
+
+Ce guide à pour but de vous montrer comment générer une nouvelle adresse MAC à chasue fois que votre ordinateur se connectera à un réseau.
+
+h1. Qu'est-ce qu'une adresse MAC ?
+
+Une [[Adresse MAC (Media Access Controk)->https://fr.wikipedia.org/wiki/Adresse_MAC]] est une adresse unique présente dans tout les équipements réseau. Elle identifie la carte réseau (et par conséquant, si vous ne changez pas de carte réseau souvent, votre ordinateur) que vous utilisez pour connecter votre ordinateur au réseau. Elle est similaire à une adresse IP dans sa capacité à vous identifier, mais est encore plus liée au matériel que vous utilisez.
+
+h1. Pourquoi rendre l'adresse MAC aléatoire ?
+
+Étant donné qu'il s'agit d'un facteur d'identification, il peut être utilisé pour vous traquer sur l'internet. Cela est particulièrement pertinant pour les points d'accès ouvert, tels que les Wi-Fi gratuits offerts dans les fast-foods ou les lieux publiques.  **Si vous vous connectez à un réseau publique, il est fortement recommandé de générer une adresse MAC aléatoiren, esuivant la procédure ci-dessous, car il est trivial de profiler des individus grâce à leur adresse MAC**. 
+
+h1. Quelles sont les limitations causées ?
+
+Certains routeurs vous identifient par votre adresse MAC, pour vous donner une adresse IP spécialisée, ou vous permettre d'utiliser leurs services.  Tout service lié à une carte réseau peut cesser de fonctionner si vous utilisez cette méthode. Cependant, si vous ne savez pas ce que cela signifie, il est très probable que ce ne soit pas un problème. Il est possible qu'il soit nécessaire de valider quelques informations sur les portails captifs apparaisant automatiquement chaque fois qu'un bouvel utilisateur se connecte à un réseau publique avant d'obtenir un accès à l'internet.  Un exemple de ceci sont les formulaires des points d'accès sans fil fournis par des entreprises--vous devrez probablement 'accepter' les 'conditions d'utilisation' chaque fois que vous vous connecterez à un réseau Wi-Fi gratuit.
+
+h1. Mettre en place la générationd 'adresse MAC automatique sous Linux avec le Network Manager
+
+h2. Linux (général)
+
+Pour trouver votre adresse MAC actuelle, regarder dans `/sys/class/dev` en lançant par exemple `ls /sys/class/dev` ou en ouvrant le Network Manager. `lo` indique habituellement localhost, les connections filaires commencent souvent par un `e`. `ip link` fournit certains détails supplémentaires.
+
+h2. Ubuntu 10.04 avec NetworkManager
+
+Ubuntu 10.04 (et au 1er et dans un futur proche, toutes les distributions utilisent le Network Manager) embarque une version du Network Manager qui ne prend aps en charge les scripts « pre-up » pour les connexions locales--cela signifie qu'il ne peut pas lancer des scripts avant de se connecter à un réseau. Cette fonctionnalité permettre de mettre en place facilement un script qui changerait l'adresse MAC à chaque connexion. À cause de cette limitation, ce guide générera une adresse MAC aléatoire chaque fois que le Network Manager démarrera et chaque fois qu'il se déconnectera d'un réseau.
+
+# Ouvrez un terminal et lancez :
+<code>
+sudo apt-get install macchanger
+</code>
+# Il est conseillé de noter l'adresse MAC avant de passer à l'étape suivante, pour vérifier qu'elle sera bien changée par le script. Pour une connexion filaire (ethernet), tapez :
+<code>
+macchanger eth0
+</code>
+pour faire la même chose pour une connexion sans fil :
+<code>
+macchanger wlan0
+</code>
+La sortie ressemblera à quelque chose comme ça :
+<code>
+Current MAC: 00:0c:1d:47:a4:0c (Mettler & Fuchs Ag)
+</code>
+**00:0c:1d:47:a4:0c** est l'adresse MAC de cette instance, elle est toujours de la forme **XX:XX:XX:XX:XX:XX**.  Le texte entre parenthèses peut varier.
+# Créez le fichier **/etc/init/macchanger.conf**.  Ceci peut être fait en tapant :
+<code>
+sudo nano /etc/init/macchanger.conf
+</code>
+# Copiez les lignes suivantes et sauvegardez le fichier (Ctrl+X enregistrera le fichidr et fermera nano) :
+
+<pre>
+# macchanger - set MAC addresses
+#
+# Set the MAC addresses for the network interfaces.
+
+description     "change mac addresses"
+
+start on starting network-manager
+
+pre-start script
+        /usr/bin/macchanger -A wlan0
+        /usr/bin/macchanger -A eth0
+        /usr/bin/macchanger -A wmaster0
+        /usr/bin/macchanger -A pan0
+        #/usr/bin/logger wlan0 `/usr/bin/macchanger -s wlan0`
+        #/usr/bin/logger eth0 `/usr/bin/macchanger -s eth0`
+end script
+</pre>
+Ce script se lancera après le lancement du service network manager via le démoin Ubuntu Upstart, puis, grâce à l'option **-A**, créera une adresse MAC d'une marque aléatoire. Le programme **macchanger** peut générer différents types d'adresse--cette méthode peut alerter une surveillance active du réseau, mais une surveillance passive ne le remarquera sûrement pas. Cette méthode devrait fonctionner pour la plupart des gens.
+# Créez le fichier **/etc/network/if-post-down.d/random-mac** et coller les ligne suivantes dedans :
+
+<pre>
+#!/bin/sh
+
+MACCHANGER=/usr/bin/macchanger
+
+[ "$IFACE" != "lo" ] || exit 0
+
+# Bring down interface (for wireless cards that are up to scan for networks), change MAC address to a random vendor address, bring up the interface
+/sbin/ifconfig "$IFACE" down
+macchanger -A "$IFACE"
+</pre>
+
+Ce script change l'adresse MAC de nouveau, quand le réseau est déconnecté. Il est possible, si le réseau n'est jamais déconnecté proprement et l'ordinateur jamais redémarré, que la même adresse MAC soit utilisée plusieurs fois.
+# Rendez le script **random-mac** exécutable en tapant :
+<code>
+sudo chmod +x /etc/network/if-post-down.d/random-mac
+</code>
+# Redémarrez le Network Manager pour que les changements soient pris en compte :
+<code>
+sudo service network-manager restart
+</code>
+
+Votre ordinateur générera maintenant automatiquement (sans que vous interveniez et sans vous le notifier) une nouvelle adresse MAC pour chaque carte réseau que vous avez (filaire et Wi-Fi) et réduira le tracking sur les réseaux publiques.
+
+h2. Arch Linux et autres distributions plus récentes utilisant systemd
+
+voir https://wiki.archlinux.org/index.php/MAC_address_spoofing
+
+h2. Autres systèmes d'exploitation
+
+Cette procédure peut facilement être adaptée à différents systèmes Linux/BSD et probablement OS X et Windows--si vous utilisez une autres méthodes, ajoutez la ici !
+This tactic can easily be adapted to different linux/BSD setups and possibly OS X and Windows--if you create a new implementation, add it here!
